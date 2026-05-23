@@ -1351,7 +1351,7 @@ class SessionDB:
                 # surface the tip's identity and activity data.
                 merged = dict(s)
                 for key in (
-                    "id", "ended_at", "end_reason", "message_count",
+                    "ended_at", "end_reason", "message_count",
                     "tool_call_count", "title", "last_active", "preview",
                     "model", "system_prompt",
                 ):

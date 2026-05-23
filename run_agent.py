@@ -1278,6 +1278,14 @@ class AIAgent:
                     ]
                 elif isinstance(msg.get("tool_calls"), list):
                     tool_calls_data = msg["tool_calls"]
+                # Skip empty assistant messages with no tool calls —
+                # they're scaffolding artifacts that pollute the session
+                # DB and break conversation recall with ghost messages.
+                if role == "assistant" and tool_calls_data is None:
+                    if isinstance(content, str) and not content.strip():
+                        continue
+                    if content is None:
+                        continue
                 self._session_db.append_message(
                     session_id=self.session_id,
                     role=role,
