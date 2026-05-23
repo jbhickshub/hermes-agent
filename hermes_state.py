@@ -1933,6 +1933,12 @@ class SessionDB:
         messages = []
         for row in rows:
             content = self._decode_content(row["content"])
+            # Skip empty assistant messages with no tool calls — they're
+            # scaffolding artifacts from failed/partial API calls that pollute
+            # session recall with ghost turns.
+            if row["role"] == "assistant" and not row["tool_calls"]:
+                if content is None or (isinstance(content, str) and not content.strip()):
+                    continue
             if row["role"] in {"user", "assistant"} and isinstance(content, str):
                 content = sanitize_context(content).strip()
             msg = {"role": row["role"], "content": content}
