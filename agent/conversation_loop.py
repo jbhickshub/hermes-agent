@@ -3502,6 +3502,13 @@ def run_conversation(
                 # Save session log incrementally (so progress is visible even if interrupted)
                 agent._session_messages = messages
                 
+                # Flush messages to the SQLite session DB immediately after each
+                # tool turn.  This ensures every turn's assistant message + tool
+                # results are persisted to disk before the next API call begins,
+                # so a disconnect / crash / interruption mid-turn cannot lose
+                # previously completed turns.  (#<TBD>)
+                agent._flush_messages_to_session_db(messages, conversation_history)
+                
                 # Continue loop for next response
                 continue
             
@@ -3667,6 +3674,9 @@ def run_conversation(
                         interim_msg["_thinking_prefill"] = True
                         messages.append(interim_msg)
                         agent._session_messages = messages
+                        # Flush interim thinking message to SQLite so it
+                        # survives a disconnect during the prefill loop.
+                        agent._flush_messages_to_session_db(messages, conversation_history)
                         continue
 
                     # ── Empty response retry ──────────────────────
@@ -3830,6 +3840,12 @@ def run_conversation(
 
                 messages.append(final_msg)
                 
+                # Flush the final assistant response to SQLite immediately
+                # so it persists even if the session crashes before
+                # _persist_session runs at line ~3968.
+                agent._session_messages = messages
+                agent._flush_messages_to_session_db(messages, conversation_history)
+                
                 _turn_exit_reason = f"text_response(finish_reason={finish_reason})"
                 if not agent.quiet_mode:
                     agent._safe_print(f"🎉 Conversation completed after {api_call_count} OpenAI-compatible API call(s)")
@@ -3869,6 +3885,10 @@ def run_conversation(
                                 "content": f"Error executing tool: {error_msg}",
                             }
                             messages.append(err_msg)
+                # Flush error recovery before breaking so the error state
+                # is persisted to disk.
+                agent._session_messages = messages
+                agent._flush_messages_to_session_db(messages, conversation_history)
                 break
             
             # Non-tool errors don't need a synthetic message injected.
@@ -3884,6 +3904,8 @@ def run_conversation(
                 # Append as assistant so the history stays valid for
                 # session resume (avoids consecutive user messages).
                 messages.append({"role": "assistant", "content": final_response})
+                agent._session_messages = messages
+                agent._flush_messages_to_session_db(messages, conversation_history)
                 break
     
     if final_response is None and (
